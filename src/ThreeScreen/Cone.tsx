@@ -1,12 +1,18 @@
 import { useFBX } from "@react-three/drei"
-import { Mesh } from "three";
+import { useEffect } from "react";
+import { EigenModule } from "../Eigen/EigenModule";
 
 export const Cone = () => {
-
     const model = useFBX("cone-with-logo.fbx");
+    useEffect(() => {
+        (async () => {
+            await EigenModule.init();
+            console.log(EigenModule.module())
+            console.log(model)
+        })();
+    }, [])
     return <>
-        {(model.children as Mesh[]).map((g: Mesh) => {
-            console.log(g.geometry.attributes)
+        {(model.children as THREE.Mesh[]).map((g: THREE.Mesh) => {
             return <mesh key={g.id}>
                 <bufferGeometry>
                     <bufferAttribute attach="attributes-position" name="position" args={[g.geometry.attributes.position.array, 3]} />
