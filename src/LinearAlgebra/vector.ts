@@ -17,6 +17,10 @@ export class Vector {
 		this.z = z;
 	}
 
+	toString(){
+		return `${this.x.toFixed(4)},${this.y.toFixed(4)},${this.z.toFixed(4)};`	
+	}
+
 	/**
 	 * Computes the Euclidean length of this vector.
 	 * @method Vector#norm

@@ -1,5 +1,3 @@
-"use strict";
-
 import { Halfedge } from "./halfedge";
 
 export class Face {

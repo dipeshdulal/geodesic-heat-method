@@ -1,8 +1,8 @@
-"use strict";
-
+import { Vector } from "../LinearAlgebra/vector";
 import { Halfedge } from "./halfedge";
 
 export class Vertex {
+	point: Vector;
 	halfedge?: Halfedge;
 	index: number;
 	/**
@@ -10,7 +10,8 @@ export class Vertex {
 	 * @constructor module:Core.Vertex
 	 * @property {module:Core.Halfedge} halfedge One of the outgoing halfedges associated with this vertex.
 	 */
-	constructor() {
+	constructor(point: Vector) {
+		this.point = point;
 		this.halfedge = undefined;
 		this.index = -1; // an ID between 0 and |V| - 1, where |V| is the number of vertices in a mesh
 	}

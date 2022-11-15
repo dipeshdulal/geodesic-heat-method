@@ -19,7 +19,7 @@ export class Edge {
 	 * @returns {boolean}
 	 */
 	onBoundary() {
-		return (this.halfedge?.onBoundary || this.halfedge?.twin.onBoundary);
+		return (this.halfedge?.onBoundary || this.halfedge?.twin?.onBoundary);
 	}
 
 	/**
