@@ -48,12 +48,9 @@ export const Cone = () => {
 
     const calculateDistances = (x: number) => {
         let i = heatMethodRef.current!.vertexIndex[x];
-        const nowms = new Date().getTime()
         deltaRef.current!.set(1, i, 0);
         let phi = deltaRef.current!.sum() > 0 ? heatMethodRef.current!.compute(deltaRef.current!) : undefined;
         deltaRef.current!.set(0, i, 0);
-        const afterms = new Date().getTime();
-        console.log(`Took ${afterms-nowms}ms`)
         const c = getColors(phi, heatMethodRef.current?.geometry.mesh);
         initMeshRef.current!.geometry.setAttribute("color", new Float32BufferAttribute(new Float32Array(c), 3))
     }
@@ -85,10 +82,10 @@ export const Cone = () => {
     return <>
         <mesh
             ref={initMeshRef}
-            onClick={({ face, faceIndex }) => {
-                console.log(face, faceIndex)
+            onPointerMove={({face}) => {
                 calculateDistances(face!.a);
-            }}>
+            }}
+            >
             <bufferGeometry>
                 <bufferAttribute attach="attributes-position" name="position" args={[(model.children[0] as THREE.Mesh).geometry.attributes.position.array, 3]} />
                 <bufferAttribute attach="attributes-normal" name="normal" args={[(model.children[0] as THREE.Mesh).geometry.attributes.normal.array, 3]} />
