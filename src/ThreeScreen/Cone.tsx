@@ -9,6 +9,7 @@ import { EigenModule } from "../Eigen/EigenModule";
 import { HeatMethod } from "../HeatMethod";
 import { Geometry } from "../GeometryCore/geometry";
 import { Float32BufferAttribute } from "three";
+import * as BufferGeometryUtils from "three/examples/jsm/utils/BufferGeometryUtils";
 
 const ORANGE = new Vector(1.0, 0.5, 0.0);
 function getColors(phi?: DenseMatrix, mesh?: Mesh) {
@@ -46,22 +47,30 @@ export const Cone = () => {
         (async () => {
 
             await EigenModule.init();
-            const g = initMeshRef.current!.geometry;
+            const g = BufferGeometryUtils.mergeVertices(initMeshRef.current!.geometry);
             const m = new Mesh();
-            m.buildFromGeometry(g);
-            const geometry = new Geometry(m, m.vertices.map(x => x.point) || []);
+            const vertices = [];
+            const positions = g.getAttribute("position");
+            for(let i = 0; i < positions.count; i++) {
+                vertices.push(new Vector(positions.getX(i), positions.getY(i), positions.getZ(i)))
+            }
+            const soup = {
+                f: g.index?.array,
+                v: vertices,
+            }
+            m.build(soup);
+            console.log(m);
+            const geometry = new Geometry(m, soup.v);
             let V = m.vertices.length;
             const delta = DenseMatrix.zeros(V, 1);
             const heatMethod = new HeatMethod(geometry);
-            let i = heatMethod.vertexIndex[11781];
+            let i = heatMethod.vertexIndex[3393];
             delta.set(1, i, 0);
 
             let phi = delta.sum() > 0 ? heatMethod.compute(delta) : undefined;
             const c = getColors(phi, m);
+            initMeshRef.current!.geometry = g;
             initMeshRef.current!.geometry.setAttribute("color", new Float32BufferAttribute(new Float32Array(c), 3))
-            // initMeshRef.current!.geometry.attributes.position.needsUpdate = true;
-            // initMeshRef.current!.geometry.attributes.normal.needsUpdate = true;
-            // initMeshRef.current!.geometry.attributes.color.needsUpdate = true;
         })();
     }, [])
     return <>

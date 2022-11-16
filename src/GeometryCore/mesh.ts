@@ -45,167 +45,352 @@ export class Mesh {
   eulerCharacteristic() {
     return this.vertices.length - this.edges.length + this.faces.length;
   }
-
-  // build this mesh from buffer geometry from threejs
-  buildFromGeometry(geometry: THREE.BufferGeometry) {
-    const positions = geometry.getAttribute("position");
-    const indexToVertex = new Map<number, Vertex>();
-
-    this.vertices = [];
-    this.faces = [];
+  /**
+   * Constructs this mesh.
+   * @method module:Core.Mesh#build
+   * @param {Object} polygonSoup A polygon soup mesh containing vertex positions and indices.
+   * @param {module:LinearAlgebra.Vector[]} polygonSoup.v The vertex positions of the polygon soup mesh.
+   * @param {number[]} polygonSoup.f The indices of the polygon soup mesh.
+   * @returns {boolean} True if this mesh is constructed successfully and false if not
+   * (when this mesh contains any one or a combination of the following - non-manifold vertices,
+   *  non-manifold edges, isolated vertices, isolated faces).
+   */
+  build(polygonSoup: any) {
+    // preallocate elements
+    let positions = polygonSoup["v"];
+    let indices = polygonSoup["f"];
+    this.preallocateElements(positions, indices);
 
     // create and insert vertices
-    for (let i = 0; i < positions.count; i++) {
-      let v = new Vertex(new Vector(positions.getX(i), positions.getY(i), positions.getZ(i)));
-	  v.index = i;
-      this.vertices.push(v);
+    let indexToVertex = new Map();
+    for (let i = 0; i < positions.length; i++) {
+      let v = new Vertex();
+      this.vertices[i] = v;
       indexToVertex.set(i, v);
-      if (i % 3 === 0) {
-        this.faces.push(new Face());
-      }
     }
 
+    // create and insert halfedges, edges and non boundary loop faces
     let eIndex = 0;
-    const edgeCount = new Map();
-    const existingHalfEdges = new Map();
-    const hasTwinHalfEdge = new Map<Halfedge, boolean>();
-    for (let I = 0; I < this.faces.length; I++) {
-      const f = this.faces[I];
+    let edgeCount = new Map();
+    let existingHalfedges = new Map();
+    let hasTwinHalfedge = new Map();
+    for (let I = 0; I < indices.length; I += 3) {
+      // create new face
+      let f = new Face();
+      this.faces[I / 3] = f;
 
-      // each face has three halfedges
+      // create a halfedge for each edge of the newly created face
       for (let J = 0; J < 3; J++) {
-        const h = new Halfedge();
-		h.index = 3 * I + J;
-		
-		// point current half edge and vertex to each other
-		const v = indexToVertex.get(3*I+J)!;
-		h.vertex = v;
-		v.halfedge = h;
-
-		h.face = f;
-		f.halfedge = h;
-        
-		this.halfedges[3 * I + J] = h;
+        let h = new Halfedge();
+        this.halfedges[I + J] = h;
       }
 
-      // initialize newly created half edges
+      // initialize the newly created halfedges
       for (let J = 0; J < 3; J++) {
-        const K = (J + 1) % 3;
-        const i = 3 * I + J;
-        const j = 3 * I + K;
-        // set current half edge attribute
-        const h = this.halfedges[i];
-        h.next = this.halfedges[j];
-        h.prev = this.halfedges[3 * I + ((J + 3 - 1) % 3)];
+        // current halfedge goes from vertex i to vertex j
+        let K = (J + 1) % 3;
+        let i = indices[I + J];
+        let j = indices[I + K];
+
+        // set the current halfedge's attributes
+        let h = this.halfedges[I + J];
+        h.next = this.halfedges[I + K];
+        h.prev = this.halfedges[I + ((J + 3 - 1) % 3)];
         h.onBoundary = false;
-        hasTwinHalfEdge.set(h, false);
+        hasTwinHalfedge.set(h, false);
 
-        // point current face and half edge to each other
-		const from = h.vertex!.point;
-		const to = h.next.vertex!.point;
-		let key1 = `${from.toString()}${to.toString()}`;
-		let key2 = `${to.toString()}${from.toString()}`;
-		const has_key1 = existingHalfEdges.has(key1);
-		const has_key2 = existingHalfEdges.has(key2);
-		if (has_key1 || has_key2) {
-			let twin = existingHalfEdges.get(has_key1 ? key1 : key2);
-			h.twin = twin;
-			twin.twin = h;
-			h.edge = twin.edge;
+        // point the new halfedge and vertex i to each other
+        let v = indexToVertex.get(i);
+        h.vertex = v;
+        v.halfedge = h;
 
-			hasTwinHalfEdge.set(h, true);
-			hasTwinHalfEdge.set(twin, true);
-			edgeCount.set(has_key1 ? key1: key2, edgeCount.get(has_key1? key1: key2)+1)
-		} else {
-			const e = new Edge();
-			this.edges[eIndex++] = e;
-			h.edge = e;
-			e.halfedge = h;
+        // point the new halfedge and face to each other
+        h.face = f;
+        f.halfedge = h;
 
-			existingHalfEdges.set(key1, h);
-			edgeCount.set(key1, 1);
-		}
+        // swap if i > j
+        if (i > j) j = [i, (i = j)][0];
+
+        let value = [i, j];
+        let key = value.toString();
+        if (existingHalfedges.has(key)) {
+          // if a halfedge between vertex i and j has been created in the past, then it
+          // is the twin halfedge of the current halfedge
+          let twin = existingHalfedges.get(key);
+          h.twin = twin;
+          twin.twin = h;
+          h.edge = twin.edge;
+
+          hasTwinHalfedge.set(h, true);
+          hasTwinHalfedge.set(twin, true);
+          edgeCount.set(key, edgeCount.get(key) + 1);
+        } else {
+          // create an edge and set its halfedge
+          let e = new Edge();
+          this.edges[eIndex++] = e;
+          h.edge = e;
+          e.halfedge = h;
+
+          // record the newly created edge and halfedge from vertex i to j
+          existingHalfedges.set(key, h);
+          edgeCount.set(key, 1);
+        }
+
+        // check for non-manifold edges
+        if (edgeCount.get(key) > 2) {
+          alert("Mesh has non-manifold edges!");
+          return false;
+        }
       }
     }
 
-	// create and insert boundary halfedges and imaginary faces for boundary cycles 
-	// also create and insert cornors.
+    // create and insert boundary halfedges and "imaginary" faces for boundary cycles
+    // also create and insert corners
+    let hIndex = indices.length;
+    let cIndex = 0;
+    for (let i = 0; i < indices.length; i++) {
+      // if a halfedge has no twin halfedge, create a new face and
+      // link it the corresponding boundary cycle
+      let h = this.halfedges[i];
+      if (!hasTwinHalfedge.get(h)) {
+        // create new face
+        let f = new Face();
+        this.boundaries.push(f);
 
-	let hIndex = this.halfedges.length;
-	const halfEdgesLength = this.halfedges.length;
-	let cIndex = 0;
+        // walk along boundary cycle
+        let boundaryCycle = [];
+        let he = h;
+        do {
+          // create a new halfedge
+          let bH = new Halfedge();
+          this.halfedges[hIndex++] = bH;
+          boundaryCycle.push(bH);
 
-	for(let i = 0; i < halfEdgesLength; i++) {
-		const h = this.halfedges[i];
-		if (!hasTwinHalfEdge.get(h)) {
-			// create new face
-			let f = new Face();
-			this.boundaries.push(f);
+          // grab the next halfedge along the boundary that does not have a twin halfedge
+          let nextHe = he.next;
+          while (hasTwinHalfedge.get(nextHe)) {
+            nextHe = nextHe!.twin!.next;
+          }
 
-			// walk along boundary cycle
-			let boundaryCycle = [];
-			let he = h;
-			do {
-				// create a new halfedge
-				let bH = new Halfedge();
-				this.halfedges[hIndex++] = bH;
-				boundaryCycle.push(bH);
+          // set the current halfedge's attributes
+          bH.vertex = nextHe!.vertex;
+          bH.edge = he.edge;
+          bH.onBoundary = true;
 
-				// grab the next halfedge along the boundary that does not have a twin halfedge
-				let nextHe = he.next!;
-				while (hasTwinHalfEdge.get(nextHe)) {
-					nextHe = nextHe.twin!.next!;
-				}
+          // point the new halfedge and face to each other
+          bH.face = f;
+          f.halfedge = bH;
 
-				// set the current halfedge's attributes
-				bH.vertex = nextHe.vertex;
-				bH.edge = he.edge;
-				bH.onBoundary = true;
+          // point the new halfedge and he to each other
+          bH.twin = he;
+          he.twin = bH;
 
-				// point the new halfedge and face to each other
-				bH.face = f;
-				f.halfedge = bH;
+          // continue walk
+          he = nextHe!;
+        } while (he !== h);
 
-				// point the new halfedge and he to each other
-				bH.twin = he;
-				he.twin = bH;
+        // link the cycle of boundary halfedges together
+        let n = boundaryCycle.length;
+        for (let j = 0; j < n; j++) {
+          boundaryCycle[j].next = boundaryCycle[(j + n - 1) % n]; // boundary halfedges are linked in clockwise order
+          boundaryCycle[j].prev = boundaryCycle[(j + 1) % n];
+          hasTwinHalfedge.set(boundaryCycle[j], true);
+          hasTwinHalfedge.set(boundaryCycle[j].twin, true);
+        }
+      }
 
-				// continue walk
-				he = nextHe;
-			} while (he !== h);
+      // point the newly created corner and its halfedge to each other
+      if (!h.onBoundary) {
+        let c = new Corner();
+        c.halfedge = h;
+        h.corner = c;
 
-			// link the cycle of boundary halfedges together
-			let n = boundaryCycle.length;
-			for (let j = 0; j < n; j++) {
-				boundaryCycle[j].next = boundaryCycle[(j + n - 1) % n]; // boundary halfedges are linked in clockwise order
-				boundaryCycle[j].prev = boundaryCycle[(j + 1) % n];
-				hasTwinHalfEdge.set(boundaryCycle[j], true);
-				hasTwinHalfEdge.set(boundaryCycle[j].twin!, true);
-			}
-		}
+        this.corners[cIndex++] = c;
+      }
+    }
 
-		// point the newly created corner and its halfedge to each other
-		if (!h.onBoundary) {
-			let c = new Corner();
-			c.halfedge = h;
-			h.corner = c;
+    // check if mesh has isolated vertices, isolated faces or
+    // non-manifold vertices
+    if (
+      this.hasIsolatedVertices() ||
+      this.hasIsolatedFaces() ||
+      this.hasNonManifoldVertices()
+    ) {
+      return false;
+    }
 
-			this.corners[cIndex++] = c;
-		}
-	}
+    // index elements
+    this.indexElements();
 
-	// check if mesh has isolated vertices, isolated faces or
-	// non-manifold vertices
-	if (this.hasIsolatedVertices() ||
-		this.hasIsolatedFaces() ||
-		this.hasNonManifoldVertices()) {
-		return false;
-	}
-	// index elements
-	this.indexElements();
-	
-	return true;
+    return true;
   }
+
+  // // build this mesh from buffer geometry from threejs
+  // buildFromGeometry(geometry: THREE.BufferGeometry) {
+  //   const positions = geometry.getAttribute("position");
+  //   const indexToVertex = new Map<number, Vertex>();
+
+  //   this.vertices = [];
+  //   this.faces = geometry.index?.array ?? [];
+
+  //   // create and insert vertices
+  //   for (let i = 0; i < positions.count; i++) {
+  //     let v = new Vertex(
+  //       new Vector(positions.getX(i), positions.getY(i), positions.getZ(i))
+  //     );
+  //     v.index = i;
+  //     this.vertices.push(v);
+  //     indexToVertex.set(i, v);
+  //   }
+
+  //   let eIndex = 0;
+  //   const edgeCount = new Map();
+  //   const existingHalfEdges = new Map();
+  //   const hasTwinHalfEdge = new Map<Halfedge, boolean>();
+  //   for (let I = 0; I < this.faces.length; I++) {
+  //     const f = this.faces[I];
+
+  //     // each face has three halfedges
+  //     for (let J = 0; J < 3; J++) {
+  //       const h = new Halfedge();
+  //       h.index = 3 * I + J;
+
+  //       // point current half edge and vertex to each other
+  //       const v = indexToVertex.get(3 * I + J)!;
+  //       h.vertex = v;
+  //       v.halfedge = h;
+
+  //       h.face = f;
+  //       f.halfedge = h;
+
+  //       this.halfedges[3 * I + J] = h;
+  //     }
+
+  //     // initialize newly created half edges
+  //     for (let J = 0; J < 3; J++) {
+  //       const K = (J + 1) % 3;
+  //       const i = 3 * I + J;
+  //       const j = 3 * I + K;
+  //       // set current half edge attribute
+  //       const h = this.halfedges[i];
+  //       h.next = this.halfedges[j];
+  //       h.prev = this.halfedges[3 * I + ((J + 3 - 1) % 3)];
+  //       h.onBoundary = false;
+  //       hasTwinHalfEdge.set(h, false);
+
+  //       // point current face and half edge to each other
+  //       const from = h.vertex!.point;
+  //       const to = h.next.vertex!.point;
+  //       let key1 = `${from.toString()}${to.toString()}`;
+  //       let key2 = `${to.toString()}${from.toString()}`;
+  //       const has_key1 = existingHalfEdges.has(key1);
+  //       const has_key2 = existingHalfEdges.has(key2);
+  //       if (has_key1 || has_key2) {
+  //         let twin = existingHalfEdges.get(has_key1 ? key1 : key2);
+  //         h.twin = twin;
+  //         twin.twin = h;
+  //         h.edge = twin.edge;
+
+  //         hasTwinHalfEdge.set(h, true);
+  //         hasTwinHalfEdge.set(twin, true);
+  //         edgeCount.set(
+  //           has_key1 ? key1 : key2,
+  //           edgeCount.get(has_key1 ? key1 : key2) + 1
+  //         );
+  //       } else {
+  //         const e = new Edge();
+  //         this.edges[eIndex++] = e;
+  //         h.edge = e;
+  //         e.halfedge = h;
+
+  //         existingHalfEdges.set(key1, h);
+  //         edgeCount.set(key1, 1);
+  //       }
+  //     }
+  //   }
+
+  //   // create and insert boundary halfedges and imaginary faces for boundary cycles
+  //   // also create and insert cornors.
+
+  //   let hIndex = this.halfedges.length;
+  //   const halfEdgesLength = this.halfedges.length;
+  //   let cIndex = 0;
+
+  //   for (let i = 0; i < halfEdgesLength; i++) {
+  //     const h = this.halfedges[i];
+  //     if (!hasTwinHalfEdge.get(h)) {
+  //       // create new face
+  //       let f = new Face();
+  //       this.boundaries.push(f);
+
+  //       // walk along boundary cycle
+  //       let boundaryCycle = [];
+  //       let he = h;
+  //       do {
+  //         // create a new halfedge
+  //         let bH = new Halfedge();
+  //         this.halfedges[hIndex++] = bH;
+  //         boundaryCycle.push(bH);
+
+  //         // grab the next halfedge along the boundary that does not have a twin halfedge
+  //         let nextHe = he.next!;
+  //         while (hasTwinHalfEdge.get(nextHe)) {
+  //           nextHe = nextHe.twin!.next!;
+  //         }
+
+  //         // set the current halfedge's attributes
+  //         bH.vertex = nextHe.vertex;
+  //         bH.edge = he.edge;
+  //         bH.onBoundary = true;
+
+  //         // point the new halfedge and face to each other
+  //         bH.face = f;
+  //         f.halfedge = bH;
+
+  //         // point the new halfedge and he to each other
+  //         bH.twin = he;
+  //         he.twin = bH;
+
+  //         // continue walk
+  //         he = nextHe;
+  //       } while (he !== h);
+
+  //       // link the cycle of boundary halfedges together
+  //       let n = boundaryCycle.length;
+  //       for (let j = 0; j < n; j++) {
+  //         boundaryCycle[j].next = boundaryCycle[(j + n - 1) % n]; // boundary halfedges are linked in clockwise order
+  //         boundaryCycle[j].prev = boundaryCycle[(j + 1) % n];
+  //         hasTwinHalfEdge.set(boundaryCycle[j], true);
+  //         hasTwinHalfEdge.set(boundaryCycle[j].twin!, true);
+  //       }
+  //     }
+
+  //     // point the newly created corner and its halfedge to each other
+  //     if (!h.onBoundary) {
+  //       let c = new Corner();
+  //       c.halfedge = h;
+  //       h.corner = c;
+
+  //       this.corners[cIndex++] = c;
+  //     }
+  //   }
+
+  //   debugger;
+  //   console.log(this.vertices.filter(f => !f.halfedge))
+  //   // check if mesh has isolated vertices, isolated faces or
+  //   // non-manifold vertices
+  //   if (
+  //     this.hasIsolatedVertices() ||
+  //     this.hasIsolatedFaces() ||
+  //     this.hasNonManifoldVertices()
+  //   ) {
+  //     return false;
+  //   }
+  //   // index elements
+  //   this.indexElements();
+
+  //   return true;
+  // }
 
   /**
    * Preallocates mesh elements.
@@ -306,6 +491,7 @@ export class Mesh {
    * @returns {boolean}
    */
   hasNonManifoldVertices() {
+    debugger;
     let adjacentFaces = new Map();
     for (let v of this.vertices) {
       adjacentFaces.set(v, 0);
