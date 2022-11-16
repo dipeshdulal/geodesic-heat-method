@@ -43,6 +43,21 @@ function getColors(phi?: DenseMatrix, mesh?: Mesh) {
 export const Cone = () => {
     const model = useFBX("cone-with-logo.fbx");
     const initMeshRef = useRef<THREE.Mesh>(null);
+    const heatMethodRef = useRef<HeatMethod>();
+    const deltaRef= useRef<DenseMatrix>();
+
+    const calculateDistances = (x: number) => {
+        let i = heatMethodRef.current!.vertexIndex[x];
+        const nowms = new Date().getTime()
+        deltaRef.current!.set(1, i, 0);
+        let phi = deltaRef.current!.sum() > 0 ? heatMethodRef.current!.compute(deltaRef.current!) : undefined;
+        deltaRef.current!.set(0, i, 0);
+        const afterms = new Date().getTime();
+        console.log(`Took ${afterms-nowms}ms`)
+        const c = getColors(phi, heatMethodRef.current?.geometry.mesh);
+        initMeshRef.current!.geometry.setAttribute("color", new Float32BufferAttribute(new Float32Array(c), 3))
+    }
+
     useEffect(() => {
         (async () => {
 
@@ -51,7 +66,7 @@ export const Cone = () => {
             const m = new Mesh();
             const vertices = [];
             const positions = g.getAttribute("position");
-            for(let i = 0; i < positions.count; i++) {
+            for (let i = 0; i < positions.count; i++) {
                 vertices.push(new Vector(positions.getX(i), positions.getY(i), positions.getZ(i)))
             }
             const soup = {
@@ -59,30 +74,27 @@ export const Cone = () => {
                 v: vertices,
             }
             m.build(soup);
-            console.log(m);
             const geometry = new Geometry(m, soup.v);
             let V = m.vertices.length;
-            const delta = DenseMatrix.zeros(V, 1);
-            const heatMethod = new HeatMethod(geometry);
-            let i = heatMethod.vertexIndex[3393];
-            delta.set(1, i, 0);
-
-            let phi = delta.sum() > 0 ? heatMethod.compute(delta) : undefined;
-            const c = getColors(phi, m);
+            deltaRef.current = DenseMatrix.zeros(V, 1);
+            heatMethodRef.current = new HeatMethod(geometry);
+            calculateDistances(3393);
             initMeshRef.current!.geometry = g;
-            initMeshRef.current!.geometry.setAttribute("color", new Float32BufferAttribute(new Float32Array(c), 3))
         })();
     }, [])
     return <>
-        <mesh ref={initMeshRef} onClick={({face, faceIndex}) => {
-            console.log(face, faceIndex)
-        }}>
+        <mesh
+            ref={initMeshRef}
+            onClick={({ face, faceIndex }) => {
+                console.log(face, faceIndex)
+                calculateDistances(face!.a);
+            }}>
             <bufferGeometry>
                 <bufferAttribute attach="attributes-position" name="position" args={[(model.children[0] as THREE.Mesh).geometry.attributes.position.array, 3]} />
                 <bufferAttribute attach="attributes-normal" name="normal" args={[(model.children[0] as THREE.Mesh).geometry.attributes.normal.array, 3]} />
             </bufferGeometry>
-            <meshPhongMaterial vertexColors/>
+            <meshPhongMaterial vertexColors />
         </mesh>
-       
+
     </>
 }
