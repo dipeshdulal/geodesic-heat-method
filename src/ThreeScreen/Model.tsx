@@ -1,4 +1,3 @@
-import { useFBX } from "@react-three/drei"
 import { useEffect, useRef } from "react";
 import { Mesh } from "../GeometryCore/mesh";
 import { DenseMatrix } from "../LinearAlgebra/dense-matrix";
@@ -10,6 +9,10 @@ import { HeatMethod } from "../HeatMethod";
 import { Geometry } from "../GeometryCore/geometry";
 import { Float32BufferAttribute } from "three";
 import * as BufferGeometryUtils from "three/examples/jsm/utils/BufferGeometryUtils";
+import { useLoader } from "@react-three/fiber";
+
+// @ts-ignore
+import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
 
 const ORANGE = new Vector(1.0, 0.5, 0.0);
 function getColors(phi?: DenseMatrix, mesh?: Mesh) {
@@ -40,8 +43,9 @@ function getColors(phi?: DenseMatrix, mesh?: Mesh) {
 }
 
 
-export const Cone = () => {
-    const model = useFBX("cone-with-logo.fbx");
+export const Model = () => {
+    const model = useLoader(OBJLoader, "doghead.obj");
+    
     const initMeshRef = useRef<THREE.Mesh>(null);
     const heatMethodRef = useRef<HeatMethod>();
     const deltaRef= useRef<DenseMatrix>();
@@ -51,6 +55,7 @@ export const Cone = () => {
         deltaRef.current!.set(1, i, 0);
         let phi = deltaRef.current!.sum() > 0 ? heatMethodRef.current!.compute(deltaRef.current!) : undefined;
         deltaRef.current!.set(0, i, 0);
+
         const c = getColors(phi, heatMethodRef.current?.geometry.mesh);
         initMeshRef.current!.geometry.setAttribute("color", new Float32BufferAttribute(new Float32Array(c), 3))
     }
@@ -82,10 +87,9 @@ export const Cone = () => {
     return <>
         <mesh
             ref={initMeshRef}
-            onPointerMove={({face}) => {
+            onClick={({face}) => {
                 calculateDistances(face!.a);
-            }}
-            >
+            }} >
             <bufferGeometry>
                 <bufferAttribute attach="attributes-position" name="position" args={[(model.children[0] as THREE.Mesh).geometry.attributes.position.array, 3]} />
                 <bufferAttribute attach="attributes-normal" name="normal" args={[(model.children[0] as THREE.Mesh).geometry.attributes.normal.array, 3]} />

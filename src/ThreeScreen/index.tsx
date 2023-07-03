@@ -1,10 +1,10 @@
 import { OrbitControls} from '@react-three/drei'
-import { Cone } from './Cone'
+import { Model } from './Model'
 
 export const ThreeScreen = () => {
     return <mesh>
-        <mesh scale={0.005} position={[0, -1, 0]}>
-            <Cone />
+        <mesh scale={1} position={[0, 0, 0]}>
+            <Model />
         </mesh>
         <axesHelper />
         <ambientLight color={"white"}/>

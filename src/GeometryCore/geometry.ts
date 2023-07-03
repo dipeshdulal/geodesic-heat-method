@@ -11,6 +11,8 @@ export class Geometry {
 	mesh: Mesh
 	positions: any
 
+	normalizationRadius: number = -1;
+
 	/**
 	 * This class represents the geometry of a {@link module:Core.Mesh Mesh}. This includes information such
 	 * as the position of vertices as well as methods to compute edge lengths, corner
@@ -33,7 +35,7 @@ export class Geometry {
 		}
 
 		if (normalizePositions) {
-			normalize(this.positions, mesh.vertices);
+			this.normalizationRadius = normalize(this.positions, mesh.vertices);
 		}
 	}
 
@@ -553,4 +555,5 @@ function normalize(positions: Vector[], vertices: Vertex[], rescale = true) {
 			p.divideBy(radius);
 		}
 	}
+	return radius;
 }
