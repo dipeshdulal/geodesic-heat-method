@@ -5,5 +5,5 @@ Paper Link: [Heat Method for distance computation by Keenan Crane, Clarisse Weis
 
 Code is taken from Geometry Processing JS library.
 
-### Output Image from the method
+### Sample Output Image from the method
 ![output image](op.png)
